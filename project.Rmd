@@ -1,0 +1,61 @@
+#Background
+#Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+#downloading and loading required R packages.
+#summary
+#The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+library(e1071)
+#reading dataset
+data.train<- read.csv("pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+data.test<- read.csv("pml-testing.csv", na.strings = c("NA", "#DIV/0!", ""))
+dim(data.train)
+#create a partition with the training dataset 
+data.train$cvtd_timestamp<- as.Date(data.train$cvtd_timestamp, format = "%m/%d/%Y %H:%M")
+data.train$Day<-factor(weekdays(data.train$cvtd_timestamp))
+table(data.train$classe)
+#prediction on Test dataset
+prop.table(table(data.train$classe))
+prop.table(table(data.train$user_name)) 
+prop.table(table(data.train$user_name,data.train$classe),1)
+prop.table(table(data.train$user_name,data.train$classe),2)
+prop.table(table(data.train$classe, data.train$Day),1)
+#plot matrix results
+qplot(x=Day, fill=classe, data = data.train)
+data.train <- data.train[, colSums(is.na(data.train)) == 0]
+data.test <- data.test[, colSums(is.na(data.test)) == 0] 
+classe<- data.train$classe
+trainRemove<- grepl("^X|timestamp|window", names(data.train))
+data.train<- data.train[, !trainRemove]
+trainCleaned<- data.train[, sapply(data.train, is.numeric)]
+trainCleaned$classe<- classe
+testRemove<- grepl("^X|timestamp|window", names(data.test))
+data.test<- data.test[, !testRemove]
+testCleaned<- data.test[, sapply(data.test, is.numeric)]
+set.seed(22519)
+inTrain <- createDataPartition(trainCleaned$classe, p=0.70, list=F)
+trainData <- trainCleaned[inTrain, ]
+testData <- trainCleaned[-inTrain, ]
+controlRf <- trainControl(method="cv", 5)
+#Generalized Boosted Model
+rfmod<- train(classe ~., data=trainData, method="rf", trControl=controlRf, importance=TRUE, ntree=100)
+rfmod
+predictRfmod<- predict(rfmod, testData)
+confusionMatrix(testData$classe, predictRfmod)
+accuracy <- postResample(predictRfmod, testData$classe)
+accuracy
+Error <- 1 - as.numeric(confusionMatrix(testData$classe, predictRfmod)$overall[1])
+Error
+result <- predict(rfmod, testCleaned[, -length(names(testCleaned))])
+result
+corrPlot <- cor(trainData[, -length(names(trainData))])
+corrplot(corrPlot, method="circle")
+#Applying the Selected Model to the Test Data.The accuracy of the 2 regression modeling methods above are: Random Forest : 0.9993 GBM : 0.9874 In that case, the Random Forest model will be applied to predict the quiz.
+rtree<- rpart(classe ~ ., data=trainData, method="class")
+prp(rtree)
